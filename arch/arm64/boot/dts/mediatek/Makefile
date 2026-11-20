@@ -61,6 +61,7 @@ DTC_INCLUDE += $(srctree)/arch/arm64/boot/dts
 DTC_INCLUDE += $(srctree)/include
 DTC_INCLUDE += $(objtree)/include
 
-dtb-$(CONFIG_MACH_MT6877) += mt6877.dtb ruby.dtbo
+dtb-$(CONFIG_MACH_MT6877) += mt6877.dtb ruby.dtbo ruby-mt6877-combined.dtb
 DTC_FLAGS_mt6877 += -@
 DTC_FLAGS_ruby += -@
+DTC_FLAGS_ruby-mt6877-combined += -@
