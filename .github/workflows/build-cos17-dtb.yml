@@ -29,14 +29,18 @@ jobs:
           curl -sSL "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-15.0.0_r1/clang-r510928.tar.gz" | tar -xz -C "$RUNNER_TEMP/clang"
           "$RUNNER_TEMP/clang/bin/clang" --version
 
-      - name: Build Image.gz and dtbs
+      - name: Build dtbs (fast fail)
         run: |
           export PATH="$RUNNER_TEMP/clang/bin:$PATH"
           make -j"$(nproc)" O=out ARCH=arm64 LLVM=1 LOCALVERSION=-RubyX ruby_defconfig
-          make -j"$(nproc)" O=out ARCH=arm64 LLVM=1 LOCALVERSION=-RubyX Image.gz
           make -j"$(nproc)" O=out ARCH=arm64 LLVM=1 LOCALVERSION=-RubyX dtbs
-          ls -lh out/arch/arm64/boot/Image.gz
           ls -lh out/arch/arm64/boot/dts/mediatek/*.dtb out/arch/arm64/boot/dts/mediatek/*.dtbo || true
+
+      - name: Build Image.gz
+        run: |
+          export PATH="$RUNNER_TEMP/clang/bin:$PATH"
+          make -j"$(nproc)" O=out ARCH=arm64 LLVM=1 LOCALVERSION=-RubyX Image.gz
+          ls -lh out/arch/arm64/boot/Image.gz
 
       - name: Assemble Image.gz-dtb
         run: |
