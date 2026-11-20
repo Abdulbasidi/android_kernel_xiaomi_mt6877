@@ -1,0 +1,113 @@
+name: Build ruby 6.6 COS17 (Image.gz-dtb)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            bc bison flex libssl-dev libelf-dev dwarves cpio kmod rsync \
+            zip unzip xz-utils zstd device-tree-compiler python3 curl ca-certificates
+
+      - name: Download clang r510928
+        run: |
+          mkdir -p "$RUNNER_TEMP/clang"
+          curl -sSL "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-15.0.0_r1/clang-r510928.tar.gz" | tar -xz -C "$RUNNER_TEMP/clang"
+          "$RUNNER_TEMP/clang/bin/clang" --version
+
+      - name: Build Image.gz and dtbs
+        run: |
+          export PATH="$RUNNER_TEMP/clang/bin:$PATH"
+          make -j"$(nproc)" O=out ARCH=arm64 LLVM=1 LOCALVERSION=-RubyX ruby_defconfig
+          make -j"$(nproc)" O=out ARCH=arm64 LLVM=1 LOCALVERSION=-RubyX Image.gz
+          make -j"$(nproc)" O=out ARCH=arm64 LLVM=1 LOCALVERSION=-RubyX dtbs
+          ls -lh out/arch/arm64/boot/Image.gz
+          ls -lh out/arch/arm64/boot/dts/mediatek/*.dtb out/arch/arm64/boot/dts/mediatek/*.dtbo || true
+
+      - name: Assemble Image.gz-dtb
+        run: |
+          DTS=out/arch/arm64/boot/dts/mediatek
+          test -f "$DTS/ruby-mt6877-combined.dtb"
+          cat out/arch/arm64/boot/Image.gz "$DTS/ruby-mt6877-combined.dtb" > out/Image.gz-dtb
+          ls -lh out/Image.gz-dtb
+          python3 -c "d=open('out/Image.gz-dtb','rb').read(); i=d.rfind(bytes([0xd0,0x0d,0xfe,0xed])); print('total',len(d),'fdt_at',i); assert i>0 and d[0]==0x1f"
+
+      - name: Package AnyKernel3
+        run: |
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git ak3
+          rm -rf ak3/.git ak3/README.md
+          cp out/Image.gz-dtb ak3/Image.gz-dtb
+          cat > ak3/anykernel.sh <<'AKEOF'
+          properties() { '
+          kernel.string=RubyX 6.6.143 COS17 (Image.gz + combined ruby DTB)
+          do.devicecheck=0
+          do.modules=0
+          do.systemless=0
+          do.cleanup=1
+          do.cleanuponabort=0
+          device.name1=ruby
+          device.name2=
+          supported.versions=
+          supported.patchlevels=
+          supported.vendorpatchlevels=
+          '; }
+
+          boot_attributes() {
+          set_perm_recursive 0 0 755 644 $RAMDISK/*;
+          set_perm_recursive 0 0 750 750 $RAMDISK/init* $RAMDISK/sbin;
+          }
+
+          BLOCK=boot;
+          IS_SLOT_DEVICE=1;
+          RAMDISK_COMPRESSION=auto;
+          PATCH_VBMETA_FLAG=auto;
+
+          . tools/ak3-core.sh;
+
+          split_boot;
+          flash_boot;
+          AKEOF
+          cd ak3
+          zip -r9 "../AnyKernel3-ruby-6.6.143-cos17-${GITHUB_RUN_NUMBER}.zip" . -x ".git/*"
+          cd ..
+          sha256sum AnyKernel3-ruby-6.6.143-cos17-*.zip | tee sha256.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AnyKernel3-ruby-6.6.143-cos17-${{ github.run_number }}
+          path: |
+            AnyKernel3-ruby-6.6.143-cos17-*.zip
+            sha256.txt
+
+      - name: Publish release
+        continue-on-error: true
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: cos17-${{ github.run_number }}
+          name: ruby 6.6.143 COS17 build ${{ github.run_number }}
+          body: |
+            Kernel: 6.6.143 + LOCALVERSION=-RubyX
+            Tree: lineage-24.0 + cos17-dtb branch
+            Toolchain: AOSP clang r510928
+
+            Payload: Image.gz + ruby-mt6877-combined.dtb (Image.gz-dtb layout),
+            matching the stock COS17 boot image (header v2, dtb appended to kernel).
+            AnyKernel3 keeps the existing ramdisk and flash layout.
+          files: |
+            AnyKernel3-ruby-6.6.143-cos17-${{ github.run_number }}.zip
+            sha256.txt
