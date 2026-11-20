@@ -4,6 +4,9 @@
  * Copyright (C) 2022 XiaoMi, Inc.
  */
 
+/dts-v1/;
+/plugin/;
+
 #include "mediatek/ruby-mt6877.dtsi"
 #include "mediatek/ruby/cust.dtsi"
 
