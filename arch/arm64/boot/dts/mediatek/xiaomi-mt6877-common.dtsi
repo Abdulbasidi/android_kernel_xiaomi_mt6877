@@ -4,8 +4,6 @@
  * Copyright (C) 2022 XiaoMi, Inc.
  */
 
-/dts-v1/;
-/plugin/;
 #include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/pinctrl/mt6877-pinfunc.h>
